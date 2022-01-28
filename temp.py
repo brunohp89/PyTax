@@ -11,12 +11,18 @@ import tax_library as tx
 import pickle as pk
 import binance.exceptions
 from binance.client import Client
+anno_fiscale = 2021
 
 # PER CRYPTO AL PRIMO UTILIZZO PRENDERE TUTTO LO STORICO DALL'INIZIO DELL'ACCOUNT
 # PER AGGIORNAMENTI ESTRARRE LO STORICO INIZIANDO ALMENO DA DATA - 2
+# PER ORA SOLTANTO UN FILE CON NUOVE TRANSAZIONI PUO ESSERE GESTITO ALLA VOLTA
 
 new_transactions_file = [file_os for file_os in os.listdir() if "crypto_transactions_record" in file_os]
 history_file = [file_os for file_os in os.listdir() if file_os == "cryptodotcom.pickle"]
+
+soglia_totale = pd.DataFrame()
+interessi_totali = pd.DataFrame()
+giacenza_media = pd.DataFrame()
 
 if len(new_transactions_file) == 0 and len(history_file) == 0:
     exit("ERROR: Not history nor transaction file found for crypto.com app. " \
@@ -60,6 +66,7 @@ if len(new_transactions_file) != 0:
 
         new_history = tx.get_new_history_cdc(new_transactions_file)
 
+        cryptodotcom_dict['soglia'] = new_history['soglia']
         cryptodotcom_dict['balances'] = new_history['balances']
         cryptodotcom_dict['balances-EUR'] = new_history['balances-EUR']
         cryptodotcom_dict['interest-Crypto'] = new_history['interest-Crypto']
@@ -76,6 +83,19 @@ else:
     with open('cryptodotcom.pickle', 'rb') as handle:
         cryptodotcom_dict = pk.load(handle)
 
+soglia_cdc = cryptodotcom_dict['soglia'].loc[cryptodotcom_dict['soglia']['Anno'] == anno_fiscale,:]
+soglia_cdc.drop(['Anno'], axis=1, inplace=True)
+soglia_totale['Crypto.com App'] = soglia_cdc.sum(axis=1)
+
+cryptodotcom_dict['interest-EUR']['Anno'] = [k.year for k in cryptodotcom_dict['interest-EUR'].index]
+interesse_cdc = cryptodotcom_dict['interest-EUR'].loc[cryptodotcom_dict['interest-EUR']['Anno'] == anno_fiscale,:]
+interesse_cdc.drop(['Anno'], axis=1, inplace=True)
+interessi_totali.loc[0,'Crypto.com App'] = interesse_cdc.sum(axis=1).sum(axis=0)
+
+cryptodotcom_dict['balances-EUR']['Anno'] = [k.year for k in cryptodotcom_dict['balances-EUR'].index]
+giacenza_cdc = cryptodotcom_dict['balances-EUR'].loc[cryptodotcom_dict['balances-EUR']['Anno'] == anno_fiscale,:]
+giacenza_cdc.drop(['Anno'], axis=1, inplace=True)
+giacenza_media.loc[0,'Crypto.com App'] = giacenza_cdc.sum(axis=1)[giacenza_cdc.sum(axis=1)!=0].sum(axis=0)/giacenza_cdc.sum(axis=1)[giacenza_cdc.sum(axis=1)!=0].shape[0]
 
 
 # BINANCE
@@ -106,7 +126,7 @@ if len(new_binance_files) > 0:
 
         new_df = binance_transactions_df_new[binance_transactions_df_new.index >= max_date]
         old_df = binance_transactions_df_old[binance_transactions_df_old.index < max_date]
-        binance_transactions_df = new_df.append(old_df)
+        binance_transactions_df = pd.concat([new_df, old_df])
         binance_transactions_df.sort_index(inplace=True)
 
     to_exclude = ['ETH 2.0 Staking',
@@ -123,28 +143,45 @@ if len(new_binance_files) > 0:
 
     price_dict = dict()
 
-    if new_df.shape[0] == 0 and 'binance_prices.pickle' in os.listdir():
+    start_date = dt.date(2021,1,1)
+    if 'binance_prices.pickle' in os.listdir():
         with open('binance_prices.pickle', 'rb') as handle:
             price_dict = pk.load(handle)
-    else:
+        lastup = []
+        for key in list(price_dict.keys()):
+            if not isinstance(price_dict[key], int):
+                lastup.append(price_dict[key][-1][0])
+        if isinstance(lastup[0], list) or isinstance(lastup[1], list) or isinstance(lastup[2], list):
+            lastup = [k if isinstance(k, dt.date) else k[0] for k in lastup]
+        start_date = min(lastup)
+    if binance_transactions_df.index[-1] > pd.Timestamp(start_date) or 'binance_prices.pickle' not in os.listdir():
+        # price_dict = dict()
         temp_price = binance_client.get_historical_klines("EURBUSD", binance_client.KLINE_INTERVAL_1DAY,
-                                                          tx.to_binance_date_format(dt.date(2021, 1, 1)))
+                                                          tx.to_binance_date_format(start_date))
         temp_price = [[dt.datetime.fromtimestamp(i[0] / 1000).date(), i[1]] for i in temp_price]
-        price_dict['EUR'] = temp_price
+        if 'EUR' not in list(price_dict.keys()):
+            price_dict['EUR'] = temp_price
+        else:
+            price_dict['EUR'].append(temp_price)
         for coin in np.unique(binance_transactions_df['Coin']):
             print(f'Getting price for {coin} - Binance')
-            if coin not in list(price_dict.keys()) and coin not in ['BUSD', 'USDC', 'USDT']:
+            if coin not in ['BUSD', 'USDC', 'USDT', 'UST']:
                 try:
                     temp_price = binance_client.get_historical_klines(f"{coin}BUSD",
                                                                       binance_client.KLINE_INTERVAL_1DAY,
-                                                                      tx.to_binance_date_format(dt.date(2021, 1, 1)))
+                                                                      start_str = tx.to_binance_date_format(start_date))
                     temp_price = [[dt.datetime.fromtimestamp(i[0] / 1000).date(), i[1]] for i in temp_price]
-                    price_dict[coin] = temp_price
+                    if coin not in list(price_dict.keys()):
+                        price_dict[coin] = temp_price
+                    else:
+                        price_dict[coin].append(temp_price)
                 except binance.exceptions.BinanceAPIException:  # Catching binance-python exception APIerror
                     print(f'{coin} could not be found, defaulting price to zero')
                     price_dict[coin] = 0
+
         with open('binance_prices.pickle', 'wb') as handle:
             pk.dump(price_dict, handle, protocol=pk.HIGHEST_PROTOCOL)
+
 
     # Getting interests from savings, launchpad and launchpool, eth staking 2.0
     interest_cols = ['ETH 2.0 Staking Rewards', 'Launchpad token distribution', 'Launchpool Interest',
@@ -200,7 +237,7 @@ if len(new_binance_files) > 0:
     total_binance_transactions_nat = total_binance_transactions_nat.cumsum()
     total_binance_transactions_nat[total_binance_transactions_nat < 0] = 0
 
-    index_temp = pd.date_range(total_binance_transactions_nat.index[0], total_binance_transactions_nat.index[-1])
+    index_temp = pd.date_range(dt.date(total_binance_transactions_nat.index[0].year,1,1), total_binance_transactions_nat.index[-1])
     temp_df_1 = pd.DataFrame(index=index_temp, data=[np.nan]*len(index_temp), columns=['TEMP'])
     total_binance_transactions_nat = total_binance_transactions_nat.join(temp_df_1, how='outer')
     total_binance_transactions_nat.drop(['TEMP'], axis=1, inplace=True)
@@ -229,7 +266,25 @@ if len(new_binance_files) > 0:
                         price = price[0] * conversion
             total_binance_transactions_eur.iloc[index, colindex] *= price
 
+    output_df_soglia = copy.deepcopy(total_binance_transactions_nat)
+    coin_names = output_df_soglia.columns
+    output_df_soglia['Anno'] = [k.year for k in total_binance_transactions_nat.index]
+    for y in np.unique(output_df_soglia['Anno']):
+        for coin in coin_names:
+            if coin in ['USDC', 'USDT', 'BUSD', 'UST']:
+                coin_price = [x[1] for x in price_dict['EUR'] if x[0] == pd.Timestamp(dt.date(y, 1, 1))]
+            else:
+                if price_dict[coin] == 0:
+                    coin_price = [0]
+                else:
+                    coin_price = [x[1] for x in price_dict[coin] if x[0] == dt.date(y, 1, 1)]
+            if len(coin_price) == 0:
+                coin_price = [price_dict[coin][0][1]]
+            output_df_soglia.loc[output_df_soglia['Anno'] == y, coin] *= float(coin_price[0])
+
     binance_dict = dict()
+    output_df_soglia.index = [k.date() for k in output_df_soglia.index]
+    binance_dict['soglia'] = output_df_soglia
     binance_dict['balances'] = total_binance_transactions_nat
     binance_dict['balances-EUR'] = total_binance_transactions_eur
     binance_dict['interest-Crypto'] = binance_interest_nat
@@ -240,7 +295,22 @@ if len(new_binance_files) > 0:
 else:
     with open('binance.pickle', 'rb') as handle:
         binance_dict = pk.load(handle)
-#
+
+
+soglia_binance = binance_dict['soglia'].loc[binance_dict['soglia']['Anno'] == anno_fiscale,:]
+soglia_binance.drop(['Anno'], axis=1, inplace=True)
+soglia_totale['Binance'] = soglia_binance.sum(axis=1)
+
+binance_dict['interest-EUR']['Anno'] = [k.year for k in binance_dict['interest-EUR'].index]
+interesse_binance = binance_dict['interest-EUR'].loc[binance_dict['interest-EUR']['Anno'] == anno_fiscale,:]
+interesse_binance.drop(['Anno'], axis=1, inplace=True)
+interessi_totali.loc[0,'Binance'] = interesse_binance.sum(axis=1).sum(axis=0)
+
+binance_dict['balances-EUR']['Anno'] = [k.year for k in binance_dict['balances-EUR'].index]
+giacenza_binance = binance_dict['balances-EUR'].loc[binance_dict['balances-EUR']['Anno'] == anno_fiscale,:]
+giacenza_binance.drop(['Anno'], axis=1, inplace=True)
+giacenza_media.loc[0,'Binance'] = giacenza_binance.sum(axis=1)[giacenza_binance.sum(axis=1)!=0].sum(axis=0)/giacenza_binance.sum(axis=1)[giacenza_binance.sum(axis=1)!=0].shape[0]
+
 # #TOTALE
 #
 # a = pd.DataFrame(total_binance_transactions_eur.sum(axis=1))

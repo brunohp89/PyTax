@@ -7,6 +7,18 @@ import pickle as pk
 
 import requests
 
+def str_to_datetime(date):
+    try:
+        if date[10] == 'T':
+            date = date.replace('T', ' ')
+        s = dt.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+    except:
+        # try:
+        #     s = datetime.datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+        # except:
+        s = dt.datetime.strptime(date, '%Y-%m-%d')
+    return s
+
 
 def str_to_datetime(date: str):
     try:
@@ -58,6 +70,13 @@ def get_currency_balance_cdc(currency: str, crypto_transactions: pd.DataFrame):
 
     return currency_series
 
+def datetime_to_str(date, houroutput=True):
+    if houroutput:
+        s = date.strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        s = date.strftime('%Y-%m-%d')
+    return str(s)
+
 
 def get_new_history_cdc(new_transactions_file):
     crypto_transactions_df = pd.read_csv(new_transactions_file[0])
@@ -77,7 +96,7 @@ def get_new_history_cdc(new_transactions_file):
 
         new_df = crypto_transactions_df[crypto_transactions_df.index >= max_date]
         old_df = crypto_transactions_df_old[crypto_transactions_df_old.index < max_date]
-        crypto_transactions_df = new_df.append(old_df)
+        crypto_transactions_df = pd.concat([new_df,old_df])
         crypto_transactions_df.index = [i for i in range(crypto_transactions_df.shape[0])]
 
         with open('first_use_cdc.pickle', 'wb') as handle:
@@ -97,8 +116,8 @@ def get_new_history_cdc(new_transactions_file):
 
     # Getting rewards from crypto earn and supercharger
     interests = crypto_transactions_df[crypto_transactions_df['Transaction Description'] == "Crypto Earn"]
-    interests = interests.append(
-        crypto_transactions_df[crypto_transactions_df['Transaction Description'] == "Supercharger Reward"])
+    interests = pd.concat([interests,
+        crypto_transactions_df[crypto_transactions_df['Transaction Description'] == "Supercharger Reward"]])
 
     interests_df_crypto_final = pd.DataFrame()
     interests_df_eur_final = pd.DataFrame()
@@ -121,8 +140,8 @@ def get_new_history_cdc(new_transactions_file):
     # Getting rewards from card cashback
     cashback = crypto_transactions_df[
         crypto_transactions_df['Transaction Description'].isin(["Card Cashback", "Card Cashback Reversal"])]
-    cashback = cashback.append(
-        crypto_transactions_df[crypto_transactions_df['Transaction Description'].str.contains("Card Rebate")])
+    cashback = pd.concat([cashback,
+        crypto_transactions_df[crypto_transactions_df['Transaction Description'].str.contains("Card Rebate")]])
 
     cashback_df_crypto_final = pd.DataFrame()
     cashback_df_eur_final = pd.DataFrame()
@@ -151,12 +170,20 @@ def get_new_history_cdc(new_transactions_file):
     output_df.iloc[0, :] = output_df.iloc[0, :].fillna(0)
     output_df.ffill(inplace=True)
 
+    output_df = pd.DataFrame([None]*len(pd.date_range(dt.date(output_df.index[0].year,1,1), output_df.index[-1])),
+              index=pd.date_range(dt.date(output_df.index[0].year,1,1), output_df.index[-1]), columns=["TODROP"]).join(output_df)
+    output_df.drop(['TODROP'],axis=1,inplace=True)
+    output_df.index = [x.date() for x in output_df.index]
+    output_df.iloc[0,:] = output_df.iloc[0,:].fillna(0)
+    output_df.ffill(inplace=True)
+
     if new_df.shape[0] == 0 and 'cdc_prices.pickle' in os.listdir():
         with open('cdc_prices.pickle', 'rb') as handle:
             cdc_prices = pk.load(handle)
     else:
         cdc_prices = dict()
         api_key = '7Gulw489-Wyntjwa1ZPk'
+        ini_date = datetime_to_str(output_df.index[0], houroutput=False)
         response = requests.get(
             f'https://fxmarketapi.com/apitimeseries?currency=EURUSD&start_date=2020-01-01&interval=daily&api_key={api_key}')
         time = [str_to_datetime(list(response.json().get('price').keys())[i]) for i in
@@ -197,19 +224,36 @@ def get_new_history_cdc(new_transactions_file):
 
     for date_loop in output_df_eur.index:
         for coin in output_df_eur.columns:
-            conversion = [k[1] for k in cdc_prices["EUR"] if k[0].date() == date_loop][0]
+            conversion = [k[1] for k in cdc_prices["EUR"] if pd.Timestamp(k[0].date()) == pd.Timestamp(date_loop)][0]
             if coin in ['USDC', 'USDT', 'BUSD']:
                 price = 1 / conversion
             else:
                 coin_dates = [k[0] for k in cdc_prices[coin]]
                 if date_loop in coin_dates:
-                    price = [k[1] for k in cdc_prices[coin] if k[0] == date_loop][0]
+                    price = [k[1] for k in cdc_prices[coin] if pd.Timestamp(k[0]) == pd.Timestamp(date_loop)][0]
                 else:
                     price = cdc_prices[coin][0][1]
                 price *= conversion
             output_df_eur.loc[date_loop, coin] *= price
 
+    output_df_soglia = copy.deepcopy(output_df)
+    coin_names = output_df_soglia.columns
+    output_df_soglia['Anno'] = [k.year for k in output_df.index]
+    for y in np.unique(output_df_soglia['Anno']):
+        for coin in coin_names:
+            if coin in ['USDC', 'USDT', 'BUSD', 'UST']:
+                coin_price = [x[1] for x in cdc_prices['EUR'] if x[0] == pd.Timestamp(dt.date(y, 1, 1))]
+            else:
+                coin_price = [x[1] for x in cdc_prices[coin] if x[0] == dt.date(y,1,1)]
+            if len(coin_price) == 0:
+                coin_price = cdc_prices[coin][0][1]
+            output_df_soglia.loc[output_df_soglia['Anno'] == y, coin] *= coin_price
+
     vOut = dict()
+    output_df_soglia.index = [k.date() for k in output_df_soglia.index]
+    output_df.index = [k.date() for k in output_df.index]
+    output_df_eur.index = [k.date() for k in output_df_eur.index]
+    vOut['soglia'] = output_df_soglia
     vOut['cashback-EUR'] = cashback_df_eur_final
     vOut['cashback-Crypto'] = cashback_df_crypto_final
     vOut['interest-EUR'] = interests_df_eur_final
