@@ -408,14 +408,14 @@ if 'cardano_price.pickle' in os.listdir():
     if isinstance(prices_dict['ADA'][-1], list):
         timeframe = (prices_dict['ADA'][-1][-1][0] - dt.datetime.today().date()).days + 1
     else:
-        timeframe = (prices_dict['ADA'][-1][0] - dt.datetime.today().date()).days + 1
+        timeframe = (dt.datetime.today().date()-prices_dict['ADA'][-1][0]).days + 1
     prices_new = tx.get_token_prices(tokens=['ADA'], contracts=[0], networks=['cardano'], timeframe=timeframe,
                                       currency='eur')
     prices_dict['ADA'].append(prices_new['ADA'])
     with open('cardano_price.pickle', 'wb') as handle:
         pk.dump(prices_dict, handle, protocol=pk.HIGHEST_PROTOCOL)
 else:
-    prices_new = tx.get_token_prices(tokens=['ADA'], contracts=[0], networks=['cardano'], timeframe=timeframe,
+    prices_dict = tx.get_token_prices(tokens=['ADA'], contracts=[0], networks=['cardano'], timeframe=timeframe,
                                       currency='eur')
     with open('cardano_price.pickle', 'wb') as handle:
         pk.dump(prices_dict, handle, protocol=pk.HIGHEST_PROTOCOL)
@@ -562,19 +562,86 @@ for address in addresses:
 
     # import matplotlib.pyplot as plt
     # plt.plot(eth_df['ETH'])
-    timeframe = (eth_df.index[-1].date() - eth_df.index[0].date()).days + 1
-    prices_dict = tx.get_token_prices(tokens=list(eth_df.columns), contracts=contract_list, networks=network_list, timeframe=timeframe, currency='eur')
-
+    if f'{address[1:10]}_price.pickle' in os.listdir():
+        with open(f'{address[1:10]}_price.pickle', 'rb') as handle:
+            prices_dict = pk.load(handle)
+        lastup = []
+        for key in list(prices_dict.keys()):
+            if not isinstance(prices_dict[key], int):
+                lastup.append(prices_dict[key][-1][0])
+        start_date = min(lastup)
+        if start_date < dt.datetime.today().date():
+            timeframe = (dt.datetime.today().date() - start_date).days + 1
+            new_prices = tx.get_token_prices(tokens=list(eth_df.columns), contracts=contract_list,
+                                              networks=network_list,
+                                              timeframe=timeframe, currency='eur')
+            for key in list(new_prices.keys()):
+                if key not in list(prices_dict.keys()):
+                    prices_dict[key] = new_prices[key]
+                else:
+                    prices_dict[key].extend(new_prices[key])
+            with open(f'{address[1:10]}_price.pickle', 'wb') as handle:
+                pk.dump(prices_dict, handle, protocol=pk.HIGHEST_PROTOCOL)
+    else:
+        timeframe = (eth_df.index[-1].date() - eth_df.index[0].date()).days + 1
+        prices_dict = tx.get_token_prices(tokens=list(eth_df.columns), contracts=contract_list, networks=network_list,
+                                          timeframe=timeframe, currency='eur')
+        with open(f'{address[1:10]}_price.pickle', 'wb') as handle:
+            pk.dump(prices_dict, handle, protocol=pk.HIGHEST_PROTOCOL)
+    print("CORREGGERE GESTIONE PREZZI STABLECOIN IN ETHEREUM")
     eth_df_EUR = copy.deepcopy(eth_df)
-    eth_df_EUR.index = eth_df.index =  [dt.date.fromisoformat(k.isoformat()[0:10]) for k in eth_df_EUR.index]
+    eth_df_EUR.index = eth_df.index = [dt.date.fromisoformat(k.isoformat()[0:10]) for k in eth_df_EUR.index]
     for coin in eth_df_EUR.columns:
         for date_loop in eth_df_EUR.index:
             price = [i[1] for i in prices_dict[coin] if i[0] == date_loop]
-            eth_df_EUR.loc[date_loop,coin] *= price[0]
+            eth_df_EUR.loc[date_loop, coin] *= price[0]
+
+    eth_df_soglia = copy.deepcopy(eth_df)
+    coin_names = eth_df_soglia.columns
+    eth_df_soglia['Anno'] = [k.year for k in eth_df_soglia.index]
+    for y in np.unique(eth_df_soglia['Anno']):
+        for coin in coin_names:
+            if coin in ['USDC', 'USDT', 'BUSD', 'UST']:
+                coin_price = [x[1] for x in prices_dict['EUR'] if x[0] == dt.date(y, 1, 1)]
+            else:
+                if prices_dict[coin] == 0:
+                    coin_price = [0]
+                else:
+                    coin_price = [x[1] for x in prices_dict[coin] if x[0] == dt.date(y, 1, 1)]
+            if len(coin_price) == 0:
+                coin_price = [prices_dict[coin][0][1]]
+            eth_df_soglia.loc[eth_df_soglia['Anno'] == y, coin] *= float(coin_price[0])
+
+    index_temp = pd.date_range(dt.date(eth_df.index[0].year, 1, 1), dt.datetime.today().date())
+    temp_df_1 = pd.DataFrame(index=index_temp, data=[np.nan] * len(index_temp), columns=['TEMP'])
+
+    soglia_eth = eth_df_soglia.loc[eth_df_soglia['Anno'] == anno_fiscale, :]
+    eth_df_soglia.drop(['Anno'], axis=1, inplace=True)
+
+    eth_df = temp_df_1.join(eth_df)
+    eth_df.drop(['TEMP'], axis=1, inplace=True)
+    eth_df.fillna(0, inplace=True)
+
+    eth_df_soglia = temp_df_1.join(eth_df_soglia)
+    eth_df_soglia.drop(['TEMP'], axis=1, inplace=True)
+    eth_df_soglia.fillna(0, inplace=True)
+
+    eth_df_EUR = temp_df_1.join(eth_df_EUR)
+    eth_df_EUR.drop(['TEMP'], axis=1, inplace=True)
+    eth_df_EUR.fillna(0, inplace=True)
+
+    soglia_totale[f'ETH Non-Custodial {address[3:10]}'] = eth_df_soglia.sum(axis=1)
+
+    eth_df_EUR['Anno'] = [k.year for k in eth_df_EUR.index]
+    giacenza_eth = eth_df_EUR.loc[eth_df_EUR['Anno'] == anno_fiscale, :]
+    giacenza_eth.drop(['Anno'], axis=1, inplace=True)
+    giacenza_media.loc[0, f'ETH Non-Custodial {address[3:10]}'] = giacenza_eth.sum(axis=1)[giacenza_eth.sum(axis=1) != 0].sum(axis=0) / \
+                                              giacenza_eth.sum(axis=1)[giacenza_eth.sum(axis=1) != 0].shape[0]
 
     exec(f'eth{address[3:10]}=dict()')
     exec(f'eth{address[3:10]}["balance"]=eth_df')
     exec(f'eth{address[3:10]}["balance-EUR"]=eth_df_EUR')
+    exec(f'eth{address[3:10]}["soglia"]=eth_df_soglia')
     file_1 = f'eth{address[3:10]}'
     exec(f'with open("{file_1}.pickle", "wb") as handle: '
          f'pk.dump({exec(file_1)}, handle, protocol=pk.HIGHEST_PROTOCOL)')
@@ -628,7 +695,7 @@ if coinbase_interests_and_earn_nat.shape[0] > 0:
     coinbase_interests_and_earn_nat.groupby(coinbase_interests_and_earn_nat.index).sum()
     coinbase_interests_and_earn_eur.groupby(coinbase_interests_and_earn_eur.index).sum()
 
-index_temp = pd.date_range(coinbase_df.index[0], dt.date.today())
+index_temp = pd.date_range(dt.date(coinbase_df.index[0].year,1,1), dt.date.today())
 temp_df_1 = pd.DataFrame(index=index_temp, data=[np.nan] * len(index_temp), columns=['TEMP'])
 coinbase_df = coinbase_df.join(temp_df_1, how='outer')
 coinbase_df.drop(['TEMP'], axis=1, inplace=True)
@@ -641,15 +708,43 @@ coinbase_df = coinbase_df.cumsum(axis=0)
 from_date = coinbase_df.index[0].strftime('%Y-%m-%dT00:00:00')
 to_date = coinbase_df.index[-1].strftime('%Y-%m-%dT00:00:00')
 
-coinbase_prices = dict()
-for coin in coinbase_df.columns:
-    temp = client.get_historic_prices(currency_pair=f'{coin}-USD',period="year")
-    coinbase_prices[coin] = [[tx.str_to_datetime(temp['prices'][i]['time'].replace("T"," ").replace("Z","")).date(),
-                              float(temp['prices'][i]['price'])] for i in range(len(temp['prices']))]
 
-temp = client.get_historic_prices(currency_pair=f'USDT-EUR',period="year")
-coinbase_prices['EUR'] = [[tx.str_to_datetime(temp['prices'][i]['time'].replace("T"," ").replace("Z","")).date(),
-                              float(temp['prices'][i]['price'])] for i in range(len(temp['prices']))]
+if 'coinbase_price.pickle' in os.listdir():
+    with open('coinbase_price.pickle', 'rb') as handle:
+        coinbase_prices = pk.load(handle)
+    lastup = []
+    for key in list(coinbase_prices.keys()):
+            lastup.append(coinbase_prices[key][0][0])
+    start_date = min(lastup)
+    if start_date > dt.datetime.today().date():
+        for coin in coinbase_df.columns:
+            temp = client.get_historic_prices(currency_pair=f'{coin}-USD', period="all")
+            temp_list = [
+                [tx.str_to_datetime(temp['prices'][i]['time'].replace("T", " ").replace("Z", "")).date(),
+                 float(temp['prices'][i]['price'])] for i in range(len(temp['prices'])) if tx.str_to_datetime(temp['prices'][i]['time'].replace("T", " ").replace("Z", "")).date() >= start_date]
+            coinbase_prices[coin].extend(temp_list)
+
+        temp = client.get_historic_prices(currency_pair=f'USDT-EUR', period="all")
+        temp_list = [
+            [tx.str_to_datetime(temp['prices'][i]['time'].replace("T", " ").replace("Z", "")).date(),
+             float(temp['prices'][i]['price'])] for i in range(len(temp['prices'])) if
+            tx.str_to_datetime(temp['prices'][i]['time'].replace("T", " ").replace("Z", "")).date() >= start_date]
+        coinbase_prices['EUR'].extend(temp_list)
+        with open('coinbase_price.pickle', 'wb') as handle:
+            pk.dump(coinbase_prices, handle, protocol=pk.HIGHEST_PROTOCOL)
+else:
+    coinbase_prices = dict()
+    for coin in coinbase_df.columns:
+        temp = client.get_historic_prices(currency_pair=f'{coin}-USD', period="all")
+        coinbase_prices[coin] = [
+            [tx.str_to_datetime(temp['prices'][i]['time'].replace("T", " ").replace("Z", "")).date(),
+             float(temp['prices'][i]['price'])] for i in range(len(temp['prices']))]
+
+    temp = client.get_historic_prices(currency_pair=f'USDT-EUR', period="all")
+    coinbase_prices['EUR'] = [[tx.str_to_datetime(temp['prices'][i]['time'].replace("T", " ").replace("Z", "")).date(),
+                               float(temp['prices'][i]['price'])] for i in range(len(temp['prices']))]
+    with open('coinbase_price.pickle', 'wb') as handle:
+        pk.dump(coinbase_prices, handle, protocol=pk.HIGHEST_PROTOCOL)
 
 coinbase_df_EUR = copy.deepcopy(coinbase_df)
 coinbase_df_EUR.index = coinbase_df.index
@@ -661,16 +756,44 @@ for coin in coinbase_df_EUR.columns:
         else:
             conversion = [i[1] for i in coinbase_prices['EUR'] if i[0] == date_loop]
             loop_control = 0
-            while len(conversion) == 0 and loop_control < 7:
+            dateloop2 = copy.deepcopy(date_loop)
+            while len(conversion) == 0 and loop_control < 27:
                 loop_control += 1
-                conversion = [i[1] for i in coinbase_prices['EUR'] if i[0] == date_loop - dt.timedelta(days=1)]
+                conversion = [i[1] for i in coinbase_prices['EUR'] if i[0] == dateloop2 - dt.timedelta(days=1)]
+                dateloop2 -= dt.timedelta(days=1)
             coinbase_df_EUR.loc[date_loop,coin] *= price[0]*conversion[0]
-#
-# import requests
-# from bs4 import BeautifulSoup
-#
-# page = requests.get('https://crypto.com/exchange/document/fees-limits')  # Getting page HTML through request
-# soup = BeautifulSoup(page.content, 'html.parser')
+
+coinbase_interests_and_earn_eur['Anno'] = [k.year for k in coinbase_interests_and_earn_eur.index]
+temp_interest = coinbase_interests_and_earn_eur[coinbase_interests_and_earn_eur['Anno'] == anno_fiscale]
+temp_interest.drop(['Anno'], axis=1, inplace=True)
+interessi_totali.loc[0,"Coinbase"] = temp_interest.sum(axis=1).sum(axis=0)
+
+coinbase_df_soglia = copy.deepcopy(coinbase_df)
+coin_names = coinbase_df_soglia.columns
+coinbase_df_soglia['Anno'] = [k.year for k in coinbase_df_soglia.index]
+for y in np.unique(coinbase_df_soglia['Anno']):
+    for coin in coin_names:
+        if coin in ['USDC', 'USDT', 'BUSD', 'UST']:
+            coin_price = [x[1] for x in coinbase_prices['EUR'] if x[0] == dt.date(y, 1, 1)]
+        else:
+            if coinbase_prices[coin] == 0:
+                coin_price = [0]
+            else:
+                coin_price = [x[1] for x in coinbase_prices[coin] if x[0] == dt.date(y, 1, 1)]
+        if len(coin_price) == 0:
+            coin_price = [coinbase_prices[coin][0][1]]
+        coinbase_df_soglia.loc[coinbase_df_soglia['Anno'] == y, coin] *= float(coin_price[0])
+
+temp_soglia = coinbase_df_soglia[coinbase_df_soglia['Anno'] == anno_fiscale]
+temp_soglia.drop(['Anno'], axis=1, inplace=True)
+soglia_totale["Coinbase"] = temp_soglia.sum(axis=1)
+
+giacenza_coinbase = copy.deepcopy(coinbase_df_EUR)
+giacenza_coinbase['Anno'] = [k.year for k in giacenza_coinbase.index]
+giacenza_coinbase = giacenza_coinbase.loc[giacenza_coinbase['Anno'] == anno_fiscale,:]
+giacenza_coinbase.drop(['Anno'], axis=1, inplace=True)
+giacenza_media.loc[0, 'Coinbase'] = giacenza_coinbase.sum(axis=1)[giacenza_coinbase.sum(axis=1)!=0].sum(axis=0)/giacenza_coinbase.sum(axis=1)[giacenza_coinbase.sum(axis=1)!=0].shape[0]
+
 
 
 # UPHOLD
