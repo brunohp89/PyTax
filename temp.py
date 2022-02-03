@@ -13,6 +13,7 @@ import binance.exceptions
 from binance.client import Client
 anno_fiscale = 2021
 
+print(f'Last updated: 03/02/2022')
 # PER CRYPTO AL PRIMO UTILIZZO PRENDERE TUTTO LO STORICO DALL'INIZIO DELL'ACCOUNT
 # PER AGGIORNAMENTI ESTRARRE LO STORICO INIZIANDO ALMENO DA DATA - 2
 # PER ORA SOLTANTO UN FILE CON NUOVE TRANSAZIONI PUO ESSERE GESTITO ALLA VOLTA
@@ -309,7 +310,142 @@ interessi_totali.loc[0,'Binance'] = interesse_binance.sum(axis=1).sum(axis=0)
 binance_dict['balances-EUR']['Anno'] = [k.year for k in binance_dict['balances-EUR'].index]
 giacenza_binance = binance_dict['balances-EUR'].loc[binance_dict['balances-EUR']['Anno'] == anno_fiscale,:]
 giacenza_binance.drop(['Anno'], axis=1, inplace=True)
-giacenza_media.loc[0,'Binance'] = giacenza_binance.sum(axis=1)[giacenza_binance.sum(axis=1)!=0].sum(axis=0)/giacenza_binance.sum(axis=1)[giacenza_binance.sum(axis=1)!=0].shape[0]
+giacenza_media.loc[0, 'Binance'] = giacenza_binance.sum(axis=1)[giacenza_binance.sum(axis=1)!=0].sum(axis=0)/giacenza_binance.sum(axis=1)[giacenza_binance.sum(axis=1)!=0].shape[0]
+
+
+ada_addresses = ["addr1q8exfalw5xnv3uukxctz444k82fxaermchmx9yudny7cdd2xxp8h453qfxhcgz7qh6vadvrqzzeu976jgl03e9yg4rgs9kerrl",
+    "addr1q9qsff24ssan9cmz7prr80tk6ej3xjkqswv233ylngq84q6xxp8h453qfxhcgz7qh6vadvrqzzeu976jgl03e9yg4rgsteyfrn",
+    "addr1q8lj2trcm4969sfm73x9mlq0jzrldk8erefd8v8fm9shct6xxp8h453qfxhcgz7qh6vadvrqzzeu976jgl03e9yg4rgs6aeufq"]
+
+first_delegate_day = dt.datetime(2021,4,8,15,45,28)
+intrawallet_df = pd.DataFrame()
+if "intrawallet_transactions_ada.csv" in os.listdir():
+    with open("intrawallet_transactions_ada.csv","r") as handle:
+        intrawallet_transactions = pd.read_csv(handle)
+    intra_index = []
+    [exec("intra_index.append(dt.datetime("+",".join(list(intrawallet_transactions.iloc[i,:].astype(str)))+"))") for i in range(intrawallet_transactions.shape[0])]
+    intrawallet_df = pd.DataFrame([-0.172761]*len(intra_index), index=intra_index)
+out = pd.DataFrame()
+for address in ada_addresses:
+
+    req_response = requests.get(f"https://api.blockchair.com/cardano/raw/address/{address}")
+    req_response = req_response.json()
+    tx_list = req_response['data'][address]['address']['caTxList']
+
+    tx_list_in = []
+    tx_list_out = []
+    fees_tx = []
+    for txl in tx_list:
+        list_temp = [(dt.datetime.fromtimestamp(txl['ctbTimeIssued']), int(txl['ctbOutputs'][i]['ctaAmount']['getCoin']) / 10 ** 6) for i in range(len(txl['ctbOutputs'])) if
+                     txl['ctbOutputs'][i]['ctaAddress'] == address]
+        tx_list_out.extend(list_temp)
+        list_temp = [(dt.datetime.fromtimestamp(txl['ctbTimeIssued']), -int(txl['ctbInputs'][i]['ctaAmount']['getCoin']) / 10 ** 6) for i in range(len(txl['ctbInputs'])) if
+                     txl['ctbInputs'][i]['ctaAddress'] == address]
+        tx_list_in.extend(list_temp)
+        fees_tx.append((dt.datetime.fromtimestamp(txl['ctbTimeIssued']), -int(txl['ctbFees']['getCoin']) / 10 ** 6))
+
+    tx_list_in = pd.DataFrame(tx_list_in)
+    if tx_list_in.shape[0] != 0:
+        tx_series_in = pd.DataFrame(tx_list_in.iloc[:, 1].tolist(), index=tx_list_in.iloc[:,0].tolist(), columns=["IN"])
+
+    tx_list_out = pd.DataFrame(tx_list_out)
+    if tx_list_out.shape[0] != 0:
+        tx_series_out = pd.DataFrame(tx_list_out.iloc[:,1].tolist(),index=tx_list_out.iloc[:,0].tolist(), columns=["OUT"])
+
+    if "tx_series_in" in globals().keys() and "tx_series_out" in globals().keys():
+        tx_inout = tx_series_in.join(tx_series_out, lsuffix="l", how='outer')
+    elif "tx_series_in" not in globals().keys() and "tx_series_out" in globals().keys():
+        tx_series_in = copy.deepcopy(tx_series_out)
+        tx_inout = tx_series_in.join(tx_series_out, lsuffix="l", how='outer')
+        tx_inout['OUTl'] = 0
+        tx_inout.columns = ["IN", "OUT"]
+    elif "tx_series_in" in globals().keys() and "tx_series_out" not in globals().keys():
+        tx_series_out = copy.deepcopy(tx_series_in)
+        tx_inout = tx_series_in.join(tx_series_out, lsuffix="l", how='outer')
+        tx_inout['INl'] = 0
+        tx_inout.columns = ["IN", "OUT"]
+
+    fees_tx = pd.DataFrame(fees_tx)
+    tx_series_fee = pd.DataFrame(fees_tx.iloc[:,1].tolist(),index=fees_tx.iloc[:,0].tolist(), columns=["FEES"])
+    tx_series_fee = tx_series_fee.groupby(tx_series_fee.index).sum()
+
+    tx_inout_fees = tx_inout.join(tx_series_fee, lsuffix="l", how='outer')
+    tx_inout_fees.fillna(0, inplace=True)
+
+    # for i in range(tx_inout_fees.shape[0]):
+    #     if tx_inout_fees.iloc[i,0] == -tx_inout_fees.iloc[i,1]:
+    #         tx_inout_fees.iloc[i, 1] = -2
+
+    del(tx_series_in, tx_series_out)
+
+    out = pd.concat([out,tx_inout_fees])
+
+if first_delegate_day is not None:
+    out.loc[first_delegate_day,"IN"] = 0
+
+out = pd.DataFrame(out.sum(axis=1))
+if intrawallet_df.shape[0] > 0:
+    out = out.join(intrawallet_df, lsuffix='l', how='outer')
+    out.fillna(0, inplace=True)
+    out = pd.DataFrame(out.sum(axis=1))
+
+out.index = [k.date() for k in out.index]
+out = out.groupby(out.index).sum()
+out = out.cumsum()
+
+index_temp = pd.date_range(dt.date(out.index[0].year, 1, 1),dt.datetime.today().date())
+temp_df_1 = pd.DataFrame(index=index_temp, data=[np.nan] * len(index_temp), columns=['TEMP'])
+out = out.join(temp_df_1, lsuffix='l', how='outer')
+out.drop(['TEMP'], axis=1, inplace=True)
+out.columns = ['ADA']
+out.iloc[0,:].fillna(0, inplace=True)
+out.ffill(inplace=True)
+cardano_ADA = copy.deepcopy(out)
+
+
+
+if 'cardano_price.pickle' in os.listdir():
+    with open('cardano_price.pickle', 'rb') as handle:
+        prices_dict = pk.load(handle)
+    timeframe = (prices_dict['ADA'][-1][0] - dt.datetime.today().date()).days + 1
+    prices_new = tx.get_token_prices(tokens=['ADA'], contracts=[0], networks=['cardano'], timeframe=timeframe,
+                                      currency='eur')
+    prices_dict['ADA'].append(prices_new['ADA'])
+    with open('cardano_price.pickle', 'wb') as handle:
+        pk.dump(prices_dict, handle, protocol=pk.HIGHEST_PROTOCOL)
+else:
+    prices_new = tx.get_token_prices(tokens=['ADA'], contracts=[0], networks=['cardano'], timeframe=timeframe,
+                                      currency='eur')
+    with open('cardano_price.pickle', 'wb') as handle:
+        pk.dump(prices_dict, handle, protocol=pk.HIGHEST_PROTOCOL)
+
+cardano_eur = copy.deepcopy(cardano_ADA)
+cardano_eur.index = cardano_eur.index = [dt.date.fromisoformat(k.isoformat()[0:10]) for k in cardano_eur.index]
+
+for date_loop in cardano_eur.index:
+    price = [float(i[1]) for i in prices_dict['ADA'] if i[0] == date_loop]
+    if len(price) == 0:
+        price = 0
+        print(f'Price for date {tx.datetime_to_str(date_loop, False)} not found, defaulting to zero')
+    cardano_eur.loc[date_loop, 'ADA'] *= price[0]
+
+cardano_ADA_soglia = copy.deepcopy(cardano_ADA)
+cardano_ADA_soglia['Anno'] = [k.year for k in cardano_ADA.index]
+for y in np.unique(cardano_ADA_soglia['Anno']):
+    first_of_year = requests.get(f'https://api.coingecko.com/api/v3/coins/cardano/history?date=01-01-{y}')
+    first_of_year = first_of_year.json()
+    first_of_year_price = first_of_year['market_data']['current_price']['eur']
+    cardano_ADA_soglia.loc[cardano_ADA_soglia['Anno'] == y, 'ADA'] *= float(first_of_year_price)
+
+soglia_cardano = cardano_ADA_soglia.loc[cardano_ADA_soglia['Anno'] == anno_fiscale,:]
+soglia_cardano.drop(['Anno'], axis=1, inplace=True)
+soglia_totale['Cardano Non-Custodial'] = soglia_cardano
+
+cardano_eur['Anno'] = [k.year for k in cardano_eur.index]
+giacenza_cardano = cardano_eur.loc[cardano_eur['Anno'] == anno_fiscale,:]
+giacenza_cardano.drop(['Anno'], axis=1, inplace=True)
+giacenza_media.loc[0,'Cardano Non-Custodial'] = giacenza_cardano.sum(axis=1)[giacenza_cardano.sum(axis=1)!=0].sum(axis=0)/giacenza_cardano.sum(axis=1)[giacenza_cardano.sum(axis=1)!=0].shape[0]
+
 
 # #TOTALE
 #
