@@ -402,12 +402,13 @@ out.iloc[0,:].fillna(0, inplace=True)
 out.ffill(inplace=True)
 cardano_ADA = copy.deepcopy(out)
 
-
-
 if 'cardano_price.pickle' in os.listdir():
     with open('cardano_price.pickle', 'rb') as handle:
         prices_dict = pk.load(handle)
-    timeframe = (prices_dict['ADA'][-1][0] - dt.datetime.today().date()).days + 1
+    if isinstance(prices_dict['ADA'][-1], list):
+        timeframe = (prices_dict['ADA'][-1][-1][0] - dt.datetime.today().date()).days + 1
+    else:
+        timeframe = (prices_dict['ADA'][-1][0] - dt.datetime.today().date()).days + 1
     prices_new = tx.get_token_prices(tokens=['ADA'], contracts=[0], networks=['cardano'], timeframe=timeframe,
                                       currency='eur')
     prices_dict['ADA'].append(prices_new['ADA'])
