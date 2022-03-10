@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 import pickle as pk
-
+from forex_python.converter import get_rate
 import requests
 
 def str_to_datetime(date):
@@ -292,7 +292,7 @@ def to_binance_date_format(date_to_convert):
     return f'{date_to_convert.day} {month_out}, {date_to_convert.year}'
 
 
-def get_token_prices(tokens: list, contracts: list, networks: list, timeframe: int, currency='usd'):
+def get_token_prices(tokens: list, contracts: list, networks: list, timeframe, currency='usd'):
     tokens_tickers = [o.upper() for o in tokens]
 
     if 'coingeckolist.pickle' not in os.listdir():
@@ -315,9 +315,20 @@ def get_token_prices(tokens: list, contracts: list, networks: list, timeframe: i
         print(f'Getting prices for {coin} - CoinGecko')
         if contract == 0:
             tok1 = [g.get('id') for g in coingecko_coins_list if g.get('symbol').upper() == coin]
-            tokens_prices.append(requests.get(f'http://api.coingecko.com/api/v3/coins/{tok1[0]}'
-                                              f'/market_chart?vs_currency={currency}&days={timeframe}'))
-
+            if len(tok1) == 0:
+                tokens_prices.append(0)
+                print(f'Could not find token {coin} in coingecko, defaulting to zero')
+            else:
+                try:
+                    if "-" in tok1[-1]:
+                        tokens_prices.append(requests.get(f'http://api.coingecko.com/api/v3/coins/{tok1[0]}'
+                                                          f'/market_chart?vs_currency={currency}&days={timeframe}'))
+                    else:
+                        tokens_prices.append(requests.get(f'http://api.coingecko.com/api/v3/coins/{tok1[-1]}'
+                                                      f'/market_chart?vs_currency={currency}&days={timeframe}'))
+                except:
+                    tokens_prices.append(requests.get(f'http://api.coingecko.com/api/v3/coins/{tok1[0]}'
+                                                      f'/market_chart?vs_currency={currency}&days={timeframe}'))
         else:
             temp_contract = requests.get(f'https://api.coingecko.com/api/v3/coins/{network}/contract/'
                                          f'{contract}')
@@ -371,3 +382,13 @@ def uphold_date_to_date(date):
     elif date[0:3] == 'Dec':
         month_out = 12
     return dt.date(int(date[7:12]),month_out,int(date[4:6]))
+
+def get_usd_eur_rate(i_date: dt.date):
+    if isinstance(i_date, pd.Timestamp) or isinstance(i_date, str):
+        i_date = str_to_datetime(str(i_date))
+        i_date = i_date.date()
+    elif isinstance(i_date, dt.datetime):
+        i_date = i_date.date()
+    else:
+        raise ValueError("Date has to be of type datetime.date, datetime.datetime, pd.Timestamp or str")
+    return get_rate("USD", "EUR", i_date)
