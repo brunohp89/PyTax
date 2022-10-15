@@ -1,0 +1,8 @@
+Timestamp,From,To,Coin,Amount,Fee
+2022-04-05 16:50:48 UTC,cro1yjjlx5qsrj5rxn5xtd5rkm6dcqzlchxkrvsmg6,cro17h84v642smq2jn0jrjrhsvx3ujnrfrx5ha0c83,CRO,77.379,0.000125
+2022-04-05 17:59:38 UTC,cro1yjjlx5qsrj5rxn5xtd5rkm6dcqzlchxkrvsmg6,cro17h84v642smq2jn0jrjrhsvx3ujnrfrx5ha0c83,CRO,2206.589,0.000125
+2022-04-05 18:47:57 UTC,cro17h84v642smq2jn0jrjrhsvx3ujnrfrx5ha0c83,0xd6ED446e05af56956D4193c018f6D1b6D000BF2b,CRO,10,0.0001
+2022-04-05 18:53:41 UTC,cro17h84v642smq2jn0jrjrhsvx3ujnrfrx5ha0c83,0xd6ED446e05af56956D4193c018f6D1b6D000BF2b,CRO,5,0.0001
+2022-04-05 19:18:18 UTC,cro17h84v642smq2jn0jrjrhsvx3ujnrfrx5ha0c83,0xd6ED446e05af56956D4193c018f6D1b6D000BF2b,CRO,2268.9378,0.0001
+2022-09-10 10:37:41 UTC,cro1yjjlx5qsrj5rxn5xtd5rkm6dcqzlchxkrvsmg6,cro17h84v642smq2jn0jrjrhsvx3ujnrfrx5ha0c83,CRO,3854.8790,0.0001
+2022-09-10 10:40:18 UTC,cro17h84v642smq2jn0jrjrhsvx3ujnrfrx5ha0c83,0xd6ED446e05af56956D4193c018f6D1b6D000BF2b,CRO,3854.8790,0.0001

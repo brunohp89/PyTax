@@ -19,3 +19,4 @@ tax.log
 /utility/exchange_rates.pickle
 /utility/coingeckolist.pickle
 *__pycache__*
+*.pickle

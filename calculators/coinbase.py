@@ -1,7 +1,5 @@
 import os
-
 import numpy as np
-
 from utility.utils import log
 from utility.PricesClass import Prices, update_prices
 import pandas as pd
@@ -116,7 +114,7 @@ def calculate_all(year_sel=None, name='Coinbase'):
     transactions_raw = get_transactions_df(True)
     balances_in = ut.balances(transactions=transactions, year_sel=year_sel)
     balaces_fiat_in = ut.balances_fiat(balances=balances_in, prices=coinbase_prices, year_sel=year_sel)
-    soglia_in = ut.soglia(balances=balances_in, prices=coinbase_prices, year_sel=year_sel)
+    soglia_in = ut.soglia(balances_in=balances_in, prices=coinbase_prices, year_sel=year_sel)
     income_in = ut.income(transactions=transactions, type_out='crypto', name=name, year_sel=year_sel)
     income_in_fiat = ut.income(transactions=transactions, name=name, year_sel=year_sel)
     vout = {"transactions": transactions, "transactions_raw": transactions_raw, "balances": balances_in,

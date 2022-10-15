@@ -90,7 +90,7 @@ def calculate_all(address: str, year_sel=None, name='Cosmos'):
     transactions = get_transactions_df(address=address)
     balances_in = ut.balances(transactions=transactions, year_sel=year_sel)
     balaces_fiat_in = ut.balances_fiat(balances=balances_in, prices=cosmos_prices, year_sel=year_sel)
-    soglia_in = ut.soglia(balances=balances_in, prices=cosmos_prices, year_sel=year_sel)
+    soglia_in = ut.soglia(balances_in=balances_in, prices=cosmos_prices, year_sel=year_sel)
     income_in = ut.income(transactions=transactions, type_out='crypto', name=name, year_sel=year_sel)
     income_in_fiat = ut.income(transactions=transactions, name=name, year_sel=year_sel)
     vout = {"transactions": transactions, "transactions_raw": transactions, "balances": balances_in,

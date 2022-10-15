@@ -10,17 +10,17 @@ fiat_list = ["AUD", "BRL", "EUR", "GBP", "GHS", "HKD", "KES", "KZT", "NGN", "NOK
              "UAH", ""]
 
 
-def soglia(balances: pd.DataFrame, prices: Prices, year_sel=None) -> pd.DataFrame:
+def soglia(balances_in: pd.DataFrame, prices: Prices, year_sel=None) -> pd.DataFrame:
     """"Funzione per calcolare il valore delle posizioni con il prezzo al primo gennaio"""
 
-    balances_soglia = balances.copy()
-
-    for anno in np.unique([k.year for k in balances.index]):
-        balance_anno = balances[balances.index >= dt.date(anno, 1, 1)]
+    balances_soglia = balances_in.copy()
+    temp_df = pd.DataFrame()
+    for anno in np.unique([k.year for k in balances_in.index]):
+        balance_anno = balances_in[balances_in.index >= dt.date(anno, 1, 1)]
         balance_anno = balance_anno[balance_anno.index <= dt.date(anno, 12, 31)]
         balance_anno.columns = [x.upper() for x in balance_anno.columns]
-        balances.columns = [x.upper() for x in balances.columns]
-        for coin in balances.columns:
+        balances_in.columns = [x.upper() for x in balances_in.columns]
+        for coin in balances_in.columns:
             if coin.upper() not in (prices.prices['EUR'].keys()):
                 prices.convert_prices('EUR')
             if prices.prices['EUR'][coin] is None:
@@ -30,18 +30,12 @@ def soglia(balances: pd.DataFrame, prices: Prices, year_sel=None) -> pd.DataFram
             if len(conv) == 0:
                 conv = [prices.prices['EUR'][coin][0][1]]
             balance_anno[coin] = [x * conv[0] for x in list(balance_anno[coin])]
-        balances_soglia = pd.concat([balances_soglia, balance_anno])
-
-    if year_sel is not None:
-        temp_df = balances_soglia[balances_soglia.index >= dt.date(year_sel, 1, 1)]
-        temp_df = temp_df[temp_df.index <= dt.date(year_sel, 12, 31)]
-        return temp_df
-    else:
-        return balances_soglia
-
+        temp_df = pd.concat([temp_df, balance_anno])
+    return temp_df
 
 def balances_fiat(balances: pd.DataFrame, prices: Prices, currency='eur', year_sel=None):
     balances_in = balances.copy()
+    balances_in.columns = [x.upper() for x in balances_in.columns]
     prices_df = prices.to_pd_dataframe(currency)
     prices_df = prices_df[prices_df.index >= balances_in.index[0]]
     for coin in list(balances_in.columns):
@@ -52,8 +46,8 @@ def balances_fiat(balances: pd.DataFrame, prices: Prices, currency='eur', year_s
         balances_in[coin] = out_ser
 
     if year_sel is not None:
-        temp_df = balances_in[balances_in.index >= dt.date(year_sel, 1, 1)]
-        temp_df = temp_df[temp_df.index <= dt.date(year_sel, 12, 31)]
+        temp_df = balances_in[balances_in.index >= dt.date(year_sel, 1, 1)].copy()
+        temp_df = temp_df[temp_df.index <= dt.date(year_sel, 12, 31)].copy()
         return temp_df
     else:
         return balances_in
@@ -78,6 +72,8 @@ def prepare_df(df_in: pd.DataFrame, year_sel=None, cummulative=True):
         temp_df = temp_df[temp_df.index <= dt.date(year_sel, 12, 31)]
 
     temp_df[temp_df < 10 ** -9] = 0
+    temp_df = temp_df.loc[:, ~temp_df.columns.isin(list(temp_df.sum(axis=0)[temp_df.sum(axis=0) == 0].index))]
+
     return temp_df
 
 
