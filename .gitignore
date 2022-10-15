@@ -1,0 +1,21 @@
+/transactions-2021.pickle
+/transactions-2022.pickle
+/VeChain/
+/uphold/
+/iotex/
+/cryptodotorg/
+/crypto.com exchange/
+/crypto.com card/
+/crypto.com/
+/coinbase/
+/binance/
+/.idea/
+venv
+/old/
+.json
+bnb.pickle
+tax.log
+/utility/prices.pickle
+/utility/exchange_rates.pickle
+/utility/coingeckolist.pickle
+*__pycache__*
