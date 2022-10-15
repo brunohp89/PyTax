@@ -192,9 +192,7 @@ def get_transactions_df(raw=False):
         tokens = final_df_new['Coin'].tolist()
         tokens.extend(final_df_new['To Coin'].tolist())
         tokens = [x.upper() for x in list(set(tokens)) if
-                  x not in ["AUD", "BRL", "EUR", "GBP", "GHS", "HKD", "KES", "KZT", "NGN", "NOK", "PHP", "PEN", "RUB",
-                            "TRY", "UGX",
-                            "UAH", ""]]
+                  x not in ut.fiat_list]
 
         global bin_prices
 
@@ -202,7 +200,6 @@ def get_transactions_df(raw=False):
             was_updated = update_prices(bin_prices, tokens)
 
             if 'EUR' not in list(bin_prices.exchange_rates.keys()) or was_updated:
-                bin_prices.get_exchange_rates('EUR')
                 bin_prices.convert_prices('EUR', tokens)
 
         final_df_new['Fiat Price'] = 0

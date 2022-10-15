@@ -53,10 +53,7 @@ def get_transactions_df(address_list):
 
     tokens = vout['Coin'].tolist()
     tokens.extend(vout['To Coin'].tolist())
-    tokens = [x.upper() for x in list(set(tokens)) if
-              x not in ["AUD", "BRL", "EUR", "GBP", "GHS", "HKD", "KES", "KZT", "NGN", "NOK", "PHP", "PEN", "RUB",
-                        "TRY", "UGX",
-                        "UAH", ""]]
+    tokens = [x.upper() for x in list(set(tokens)) if x not in ut.fiat_list]
 
     update_prices(btc_prices, tokens)
 

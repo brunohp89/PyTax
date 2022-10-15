@@ -5,6 +5,10 @@ import utility.tax_library as tx
 from utility.PricesClass import Prices
 from utility.tax_log import log
 
+fiat_list = ["AUD", "BRL", "EUR", "GBP", "GHS", "HKD", "KES", "KZT", "NGN", "NOK", "PHP", "PEN", "RUB",
+             "TRY", "UGX",
+             "UAH", ""]
+
 
 def soglia(balances: pd.DataFrame, prices: Prices, year_sel=None) -> pd.DataFrame:
     """"Funzione per calcolare il valore delle posizioni con il prezzo al primo gennaio"""
@@ -144,3 +148,70 @@ def balances(transactions: pd.DataFrame, cummulative=True, year_sel=None):
             temp_df.columns = colnames
 
     return prepare_df(temp_df, year_sel, cummulative)
+
+
+def evm_liquidity_swap_calculation(outdf: pd.DataFrame, address: str):
+    """The input df should be the DF after downloaoding erc20 transactions"""
+    outdf['isLiquidity'] = [1 if 'LP' in x else 0 for x in list(outdf['Coin'])]
+    outdf.sort_index(inplace=True)
+
+    duplicated_index = np.unique(outdf.index[outdf.index.duplicated(keep='first')])
+    liquidity_provider = {}
+    for index in duplicated_index:
+        temp = outdf.loc[[index], :].copy()
+        if address in list(temp['From']) and address in list(temp['To']) and \
+                temp.loc[temp['isLiquidity'] == 1, 'Amount'].shape[0] == 0 \
+                and temp[temp['Amount'] == 0].shape[0] == 0:  # Swap
+            temp['From'] = temp['To'] = 'Swap'
+            temp['To Coin'] = temp['Coin'][1]
+            temp['To Amount'] = temp['Amount'][1]
+            outdf.drop([pd.to_datetime(index)], axis=0, inplace=True)
+            outdf = pd.concat([outdf, temp.iloc[[0], :]], axis=0)
+        elif temp['isLiquidity'].sum() > 0:  # Liquidity pool
+            if list(temp.loc[temp['isLiquidity'] == 1, 'Amount'])[0] > 0 and \
+                    address not in list(temp.loc[temp['isLiquidity'] != 1, 'To']) and \
+                    sum(list(temp.loc[temp['isLiquidity'] == 0, 'Amount'] / abs(temp.loc[temp[
+                                                                                             'isLiquidity'] == 0, 'Amount']))) < 0:  # I am adding liquidity, ignore this movement
+                temp1 = temp.loc[temp['isLiquidity'] == 0, ['Coin', 'Amount']]
+                temp['From'] = temp['To'] = 'Adding Liquidity'
+                for coin_l in temp1['Coin']:
+                    liquidity_provider[coin_l] = abs(list(temp1.loc[temp1['Coin'] == coin_l, 'Amount'])[0])
+                temp = temp.iloc[[0], :]
+                temp['Amount'] *= 0
+                outdf.drop([pd.to_datetime(index)], axis=0, inplace=True)
+                outdf = pd.concat([outdf, temp], axis=0)
+            elif list(temp.loc[temp['isLiquidity'] == 1, 'Amount'])[0] < 0 and address not in list(temp['To']) \
+                    and temp[temp['Amount'] < 0].shape[0] == 1:  # I am putting LP in LP farm, ignore this
+                temp['From'] = temp['To'] = 'Adding LP token in farm'
+                temp = temp.iloc[[0], :]
+                temp['Amount'] *= 0
+                outdf.drop([pd.to_datetime(index)], axis=0, inplace=True)
+                outdf = pd.concat([outdf, temp], axis=0)
+            elif list(temp.loc[temp['isLiquidity'] == 1, 'Amount'])[0] > 0 and address in list(
+                    temp['To']):  # I am removing LP in LP farm + rewards (if any)
+                temp = temp.loc[temp['isLiquidity'] != 1, :]
+                temp = temp.loc[temp['Amount'] != 0, :]
+                temp.index = [k + pd.Timedelta(seconds=i) for i, k in enumerate(temp.index)]
+                temp['Fee'] /= temp.shape[0]
+                temp['Tag'] = 'Reward'
+                temp['To Coin'] = ''
+                outdf.drop([pd.to_datetime(index)], axis=0, inplace=True)
+                outdf = pd.concat([outdf, temp], axis=0)
+            elif list(temp.loc[temp['isLiquidity'] == 1, 'Amount'])[0] < 0 and address in list(
+                    temp['To']):  # I am removing Liquidity
+                temp = temp.loc[temp['isLiquidity'] != 1, :]
+                temp = temp.loc[temp['Amount'] != 0, :]
+                temp['From'] = temp['To'] = 'Removing Liquidity'
+                for coin_l in list(temp['Coin']):
+                    temp.loc[temp['Coin'] == coin_l, 'Amount'] = list(temp.loc[temp['Coin'] == coin_l, 'Amount'])[0] - \
+                                                                 liquidity_provider[coin_l]
+
+                    liquidity_provider.pop(coin_l)
+                temp.index = [k + pd.Timedelta(seconds=i) for i, k in enumerate(temp.index)]
+                temp['Fee'] /= temp.shape[0]
+                temp['Tag'] = 'Reward'
+                temp['To Coin'] = ''
+                outdf.drop([pd.to_datetime(index)], axis=0, inplace=True)
+                outdf = pd.concat([outdf, temp], axis=0)
+    outdf.drop(['isLiquidity'], axis=1, inplace=True)
+    return outdf

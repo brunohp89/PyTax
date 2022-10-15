@@ -1,19 +1,12 @@
 import pandas as pd
-import cosmos as cm
 import cryptodotcom
-import VeChain as vet
-import uphold
-import coinbase
-import cardano_noncustodial as cardano
-import binance_beacon_bsc as bsc
-from old import terra, tron as trx
+from old import terra, tron as trx, cryptodotcom_exchange as cdce
 import ethereum as eth
 import iotex as iotx
 import tax_library as tx
 import polkadot as dot
-import cronos as cro
-from calculators import bitcoin as btc, binancetax
-import cryptodotcom_exchange as cdce
+from calculators import bitcoin as btc, binancetax, coinbase, uphold, binance_beacon_bsc as bsc, vechain as vet, \
+    cardano as cardano, cosmos as cm, cronos as cro
 import near
 import solana_tax as solx
 import polygon as pg
