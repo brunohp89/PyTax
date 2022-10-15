@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 import requests
-from utility.utils import log
+from utility.tax_log import log
+
 
 def str_to_datetime(date: str):
     try:
@@ -106,7 +107,7 @@ def turn_age_into_dt(date_input):
     else:
         seconds = 0
 
-    return dt.datetime.now() - dt.timedelta(days=days, hours=hours+1, minutes=minutes, seconds=seconds)
+    return dt.datetime.now() - dt.timedelta(days=days, hours=hours + 1, minutes=minutes, seconds=seconds)
 
 
 def get_bnb(address):
@@ -157,9 +158,11 @@ def get_fiat_investment(transactions_df, currency='EUR', cummulative=True, year_
         FiatExtra.index = [p.date() for p in FiatExtra.index]
         FiatExtra.columns = ['Amount']
 
-    in_fiat = transactions_df[np.logical_and(np.logical_or(transactions_df['Coin'] == currency, transactions_df['To Coin'] == currency), transactions_df['To Coin'] != '')]
+    in_fiat = transactions_df[
+        np.logical_and(np.logical_or(transactions_df['Coin'] == currency, transactions_df['To Coin'] == currency),
+                       transactions_df['To Coin'] != '')]
     NewAmount = in_fiat.loc[in_fiat['Coin'] != currency, 'To Amount'].tolist()
-    in_fiat.loc[in_fiat['Coin'] != currency,'Amount'] = NewAmount
+    in_fiat.loc[in_fiat['Coin'] != currency, 'Amount'] = NewAmount
 
     if in_fiat[in_fiat['Amount'] > 0].shape[0] > 0 and in_fiat[in_fiat['Amount'] < 0].shape[0] > 0:
         in_fiat = in_fiat[in_fiat['Amount'] > 0]
@@ -227,6 +230,7 @@ def join_dfs(**df_to_join):
     vout = vout.groupby(by=vout.columns, axis=1).sum()
     return vout
 
+
 def concat_dfs(**df_to_concat):
     vout = pd.DataFrame()
     for df in df_to_concat:
@@ -240,6 +244,7 @@ def concat_dfs(**df_to_concat):
             vout = pd.concat([vout, df_to_concat[df]], axis=0)
     vout.sort_index(inplace=True)
     return vout
+
 
 def soglia_superata(df):
     xts = df.copy()

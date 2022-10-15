@@ -5,7 +5,7 @@ import requests
 import pickle as pk
 import yfinance as yf
 import datetime as dt
-from utility.utils import log
+from utility.tax_log import log
 import os
 
 log.info('Prices object - updated on 15/10/2022')

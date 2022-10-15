@@ -10,7 +10,7 @@ from utility.utils import log
 log.info('Binance calculator - updated on 15/10/2022')
 
 first_use = True
-bin_prices = None
+bin_prices = Prices()
 
 
 # ACQUISTI FATTI CON LA CARTA DI CREDITO DEVONO ESSERE INSERITE MANUALMENTE NELLO STORICO
@@ -197,7 +197,7 @@ def get_transactions_df(raw=False):
                             "UAH", ""]]
 
         global bin_prices
-        bin_prices = Prices()
+
         if first_use:
             was_updated = update_prices(bin_prices, tokens)
 

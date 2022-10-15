@@ -2,11 +2,11 @@ from utility.PricesClass import Prices, update_prices
 import pandas as pd
 import requests
 from utility import utils as ut, tax_library as tx
-from utility.utils import log
+from utility.tax_log import log
 
 log.info('Bitcoin calculator - updated on 15/10/2022')
 
-btc_prices = None
+btc_prices = Prices()
 
 
 def get_transactions_df(address_list):
@@ -50,7 +50,6 @@ def get_transactions_df(address_list):
     vout.loc[vout['From'].isin(address_list), 'Amount'] *= -1
 
     global btc_prices
-    btc_prices = Prices()
 
     tokens = vout['Coin'].tolist()
     tokens.extend(vout['To Coin'].tolist())

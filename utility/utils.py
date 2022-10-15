@@ -1,24 +1,12 @@
 import numpy as np
 import pandas as pd
-import utility.PricesClass as PricesClass
 import datetime as dt
 import utility.tax_library as tx
-import logging
-
-log_formatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s]  %(message)s")
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(log_formatter)
-log.addHandler(console_handler)
-
-file_handler = logging.FileHandler('tax.log')
-file_handler.setFormatter(log_formatter)
-log.addHandler(file_handler)
+from utility.PricesClass import Prices
+from utility.tax_log import log
 
 
-def soglia(balances: pd.DataFrame, prices: PricesClass, year_sel=None) -> pd.DataFrame:
+def soglia(balances: pd.DataFrame, prices: Prices, year_sel=None) -> pd.DataFrame:
     """"Funzione per calcolare il valore delle posizioni con il prezzo al primo gennaio"""
 
     balances_soglia = balances.copy()
@@ -48,7 +36,7 @@ def soglia(balances: pd.DataFrame, prices: PricesClass, year_sel=None) -> pd.Dat
         return balances_soglia
 
 
-def balances_fiat(balances: pd.DataFrame, prices: PricesClass, currency='eur', year_sel=None):
+def balances_fiat(balances: pd.DataFrame, prices: Prices, currency='eur', year_sel=None):
     balances_in = balances.copy()
     prices_df = prices.to_pd_dataframe(currency)
     prices_df = prices_df[prices_df.index >= balances_in.index[0]]
